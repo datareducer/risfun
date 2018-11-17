@@ -124,7 +124,7 @@ log("========== Начало выполнения ==========")
 
 # Строка поиска
 search_str <- trimws('${search}')
-if (search_str == '' || search_str == 'NA') {
+if (search_str == 'NA') {
     stop("Не установлено значение строки поиска")
 }
 search_list <- as.list(strsplit(search_str, ",")[[1]]) 
@@ -270,7 +270,7 @@ vacancies$salary <- with(vacancies, ifelse(vacancies$salary.gross, vacancies$sal
 # Отключаем Научную нотацию чисел на диаграммах
 options(scipen=999)
 
-CairoFonts(regular='DejaVu Serif:style=Regular')
+CairoFonts(regular='DejaVu Serif:style=Regular', bold='DejaVu Serif:style=Bold')
 
 if (!is.na(area_list)) {
     if (expcolour) {
@@ -298,7 +298,7 @@ if (jitter) {
 
 plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y="Заработная плата (нетто)", color="Опыт работы") +
     theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10), legend.text=element_text(size = 10),
-        legend.title=element_text(size = 12), strip.text.x=element_text(size = 10))
+        legend.title=element_text(size = 10, face="bold"), strip.text.x=element_text(size = 10, face="bold"))
             
 if (!is.na(limitmin) || !is.na(limitmax)) {
     plot <- plot + ylim(limitmin, limitmax)
