@@ -12,8 +12,8 @@ resourceHostDir <- '/mnt/host/${resourceName}'
 dir.create(resourceHostDir)
 logFile <- paste(resourceHostDir, paste('log_', Sys.Date(), '.txt', sep=''), sep='/')
 
-# R.cache не позволяет явно задать время жизни кэша. 
-# Обходим это, создавая новый каталог для кэширования каждый день. Таким образом, время жизни кэша будет равняться суткам.
+# R.cache не позволяет явно задать время жизни кэша. Обходим это, создавая новый каталог для кэширования каждый день.
+# Таким образом, время жизни кэша будет равняться суткам.
 cacheDir <- paste('/tmp/Rcache/${resourceName}', Sys.Date(), sep='/')
 dir.create(cacheDir, recursive=TRUE)
 setCacheRootPath(path=cacheDir)
@@ -96,12 +96,15 @@ getVacancies <- function(exp, search) {
             break
         }
       
-        items <- df$items[,c('id','alternate_url','area.name','employer.name','name','salary.currency','salary.gross','salary.from','salary.to')]
+        items <- df$items[,c('id','alternate_url','area.name','employer.name','name','salary.currency',
+            'salary.gross','salary.from','salary.to')]
         
         items$search <- factor(search)
         
         if (!is.null(exp)) {
-            items$experience <- factor(exp)
+            expval <- switch(exp, "noExperience"="Нет опыта", "between1And3"="От 1 года до 3 лет",
+                "between3And6"="От 3 до 6 лет", "moreThan6"="Более 6 лет")
+            items$experience <- factor(expval)
         }
         
         if (is.null(result)) {
@@ -293,7 +296,9 @@ if (jitter) {
     plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = I("red"), alpha = 0.8)
 }
 
-plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y="Заработная плата (нетто)", color="Опыт работы")
+plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y="Заработная плата (нетто)", color="Опыт работы") +
+    theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10), legend.text=element_text(size = 10),
+        legend.title=element_text(size = 12), strip.text.x=element_text(size = 10))
             
 if (!is.na(limitmin) || !is.na(limitmax)) {
     plot <- plot + ylim(limitmin, limitmax)
