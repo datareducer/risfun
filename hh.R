@@ -121,7 +121,6 @@ log("========== Начало выполнения ==========")
 
 # Строка поиска
 search_str <- trimws('${search}')
-
 if (search_str == '' || search_str == 'NA') {
     stop("Не установлено значение строки поиска")
 }
@@ -129,7 +128,6 @@ search_list <- as.list(strsplit(search_str, ",")[[1]])
 
 # График работы
 schedule_str <- '${schedule}'
-
 if (schedule_str == 'NA') {
     schedule_list <- NA
 } else {
@@ -142,7 +140,6 @@ if (schedule_str == 'NA') {
 
 # Регион
 area_str <- '${area}'
-
 if (area_str == 'NA') {
     area_list <- NA
 } else {
@@ -155,7 +152,6 @@ if (area_str == 'NA') {
 
 # Профобласть или специализация
 specialization_str <- '${specialization}'
-
 if (specialization_str == 'NA') {
     specialization_list <- NA
 } else {
@@ -168,7 +164,6 @@ if (specialization_str == 'NA') {
 
 # Индустрия компании
 industry_str <- '${industry}'
-
 if (industry_str == 'NA') {
     industry_list <- NA
 } else {
@@ -191,28 +186,28 @@ if (is.na(jitter)) {
     jitter <- FALSE
 }
 
-# Параметры выбросов
-outliermin_str <- '${outliermin}'
-if (outliermin_str == "NA") {
-    outliermin <- NA
+# Параметры границ
+limitmin_str <- '${limitmin}'
+if (limitmin_str == "NA") {
+    limitmin <- NA
 } else {
-    outliermin <- as.numeric(outliermin_str)
-    if (is.na(outliermin)) {
-        stop(paste("Недопустимое значение параметра нижней границы выбросов:", outliermin_str, sep=" "))
+    limitmin <- as.numeric(limitmin_str)
+    if (is.na(limitmin)) {
+        stop(paste("Недопустимое значение параметра нижней границы:", limitmin_str, sep=" "))
     }
 }
-outliermax_str <- '${outliermax}'
-if (outliermax_str == "NA") {
-    outliermax <- NA
+limitmax_str <- '${limitmax}'
+if (limitmax_str == "NA") {
+    limitmax <- NA
 } else {
-    outliermax <- as.numeric(outliermax_str)
-    if (is.na(outliermax)) {
-        stop(paste("Недопустимое значение параметра нижней границы выбросов:", outliermax_str, sep=" "))
+    limitmax <- as.numeric(limitmax_str)
+    if (is.na(limitmax)) {
+        stop(paste("Недопустимое значение параметра верхней границы:", limitmax_str, sep=" "))
     }
 }
 
 # Заголовок диаграммы
-title <- trimws('${title}')
+maintitle <- trimws('${title}')
 
 # Размеры диаграммы
 plotwidth_str <- '${plotwidth}'
@@ -266,15 +261,6 @@ vacancies$salary <- with(vacancies, ifelse(is.na(vacancies$salary.to), vacancies
 # Удаляем оклады в иностранной валюте
 vacancies <- subset(vacancies, salary.currency == "RUR")
 
-# Удаляем выбросы
-if (!is.na(outliermin)) {
-    vacancies <- subset(vacancies, salary >= outliermin)
-}
-
-if (!is.na(outliermax)) {
-    vacancies <- subset(vacancies, salary <= outliermax)
-}
-
 # Учитываем НДФЛ
 vacancies$salary <- with(vacancies, ifelse(vacancies$salary.gross, vacancies$salary*0.87, vacancies$salary))
 
@@ -283,42 +269,34 @@ options(scipen=999)
 
 CairoFonts(regular='DejaVu Serif:style=Regular')
 
-if (jitter) {
-    geom_ <- c("jitter", "boxplot"); 
+if (!is.na(area_list)) {
+    if (expcolour) {
+        aes <- aes(x=area.name, y=salary, colour=experience)
+    } else {
+        aes <- aes(x=area.name, y=salary)
+    }
 } else {
-    geom_ <- c("boxplot"); 
+    if (expcolour) {
+        aes <- aes(x="Все регионы", y=salary, colour=experience)
+    } else {
+        aes <- aes(x="Все регионы", y=salary)
+    }
 }
 
+plot <- ggplot(vacancies, mapping=aes)
+
 if (jitter) {
+    plot <- plot + geom_jitter() 
     # Отключаем изображение выбросов, чтобы они не дублировали точки вакансий
-    outlier.colour_ <- NA
+    plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = NA, alpha = 0.8)
 } else {
-    outlier.colour_ <- I("blue")
+    plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = I("red"), alpha = 0.8)
 }
 
-alpha_ <- I(0.8)
-ylab_ <- 'Заработная плата (нетто)'
-
-if (is.na(area_list)) {
-    if (expcolour) {
-        plot <- qplot(x="", y=salary, data=vacancies, 
-            facets= . ~ search, geom=geom_, alpha=alpha_, colour=experience,
-            outlier.colour=outlier.colour_, main=title, xlab="", ylab=ylab_, varwidth = boxwidth)
-    } else {
-        plot <- qplot(x="", y=salary, data=vacancies,
-            facets= . ~ search, geom=geom_, alpha=alpha_,
-            outlier.colour=outlier.colour_, main=title, xlab="", ylab=ylab_, varwidth = boxwidth)
-    }
-} else {
-    if (expcolour) {
-        plot <- qplot(x=area.name, y=salary, data=vacancies, 
-            facets= . ~ search, geom=geom_, alpha=alpha_, colour=experience,
-            outlier.colour=outlier.colour_, main=title, xlab="", ylab=ylab_, varwidth = boxwidth)
-    } else {
-        plot <- qplot(x=area.name, y=salary, data=vacancies,
-            facets= . ~ search, geom=geom_, alpha=alpha_,
-            outlier.colour=outlier.colour_, main=title, xlab="", ylab=ylab_, varwidth = boxwidth)
-    }
+plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y="Заработная плата (нетто)", color="Опыт работы")
+            
+if (!is.na(limitmin) || !is.na(limitmax)) {
+    plot <- plot + ylim(limitmin, limitmax)
 }
 
 print(plot)
