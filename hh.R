@@ -8,7 +8,7 @@ library(R.cache)
 library(Cairo)
 
 Sys.setenv(TZ = "Europe/Moscow")
-resourceHostDir <- '/mnt/host/${resourceName}'
+resourceHostDir <- '/mnt/host/logs/${resourceName}'
 dir.create(resourceHostDir)
 logFile <- paste(resourceHostDir, paste('log_', Sys.Date(), '.txt', sep=''), sep='/')
 
@@ -29,7 +29,7 @@ getData <- function(url) {
       if (is.null(resp)) {
         log(url)
         Sys.sleep(0.5)
-        resp_txt <- GET(url, user_agent("DataReducer/dev (admin@datareducer.ru)"))
+        resp_txt <- GET(url, user_agent("DataReducer/1.0 (admin@datareducer.ru)"))
         resp <- fromJSON(content(resp_txt, as="text"), flatten=TRUE)
         saveCache(resp, key)
       } else {
@@ -57,6 +57,11 @@ getVacancies <- function(exp, search, area.id) {
         url <- "https://api.hh.ru/vacancies";
         
         params_list <- list()
+
+        if (!is.na(searchfield_list)) {
+            names(searchfield_list) <- rep(c("search_field"), length(searchfield_list))
+            params_list <- append(params_list, searchfield_list)
+        }
         
         if (!is.na(specialization_list)) {
             names(specialization_list) <- rep(c("specialization"), length(specialization_list))
@@ -83,19 +88,33 @@ getVacancies <- function(exp, search, area.id) {
         url <- modify_url(url, query = params_list)
         
         url <- modify_url(url, query = list(page=p, per_page=100))
-        url <- modify_url(url, query = list(only_with_salary="true", no_magic="true", search_field="name"))
+        url <- modify_url(url, query = list(no_magic="true"))
         url <- modify_url(url, query = list(text=search))
         url <- modify_url(url, query = list(area=area.id))
         
-        if (!is.null(exp)) {
+        if (onlywithsalary) {
+            url <- modify_url(url, query = list(only_with_salary="true"))
+        }
+        
+        if (!is.na(exp)) {
             url <- modify_url(url, query = list(experience=exp))
         }
       
         df <- getData(url)
       
         pages <- df$pages
-        if(pages == 0 || length(df$items) == 0 || class(df$items$salary) == "logical") {
+        if(pages == 0 || length(df$items) == 0) {
             break
+        } else if (pages > 19) {
+            # Ограничение API
+            pages <- 19
+        }
+        
+        if (class(df$items$salary) == "logical") {
+            df$items$salary.currency <- NA
+            df$items$salary.gross <- NA
+            df$items$salary.from <- NA
+            df$items$salary.to <- NA    
         }
       
         items <- df$items[,c('id','alternate_url','area.name','employer.name','name','salary.currency',
@@ -103,7 +122,7 @@ getVacancies <- function(exp, search, area.id) {
         
         items$search <- factor(search)
         
-        if (!is.null(exp)) {
+        if (!is.na(exp)) {
             expval <- switch(exp, "noExperience"="Нет опыта", "between1And3"="От 1 года до 3 лет",
                 "between3And6"="От 3 до 6 лет", "moreThan6"="Более 6 лет")
             items$experience <- factor(expval)
@@ -129,7 +148,20 @@ search_str <- trimws('${search}')
 if (search_str == 'NA') {
     stop("Не установлено значение строки поиска")
 }
-search_list <- as.list(strsplit(search_str, ",")[[1]]) 
+search_list <- unique(as.list(strsplit(search_str, ",")[[1]]))
+
+
+# Области поиска
+searchfield_str <- '${searchfield}'
+if (searchfield_str == 'NA') {
+    searchfield_list <- NA
+} else {
+    if (!grepl("^(name|company_name|description)(,(name|company_name|description))*$", searchfield_str)) {
+        stop(paste("Недопустимое значение параметра области поиска:", searchfield_str, sep=" "))        
+    } else {
+        searchfield_list <- unique(as.list(strsplit(searchfield_str, ",")[[1]]))
+    }
+}
 
 # График работы
 schedule_str <- '${schedule}'
@@ -139,7 +171,7 @@ if (schedule_str == 'NA') {
     if (!grepl("^(fullDay|shift|flexible|remote|flyInFlyOut)(,(fullDay|shift|flexible|remote|flyInFlyOut))*$", schedule_str)) {
         stop(paste("Недопустимое значение параметра графика работы:", schedule_str, sep=" "))        
     } else {
-        schedule_list <- as.list(strsplit(schedule_str, ",")[[1]]) 
+        schedule_list <- unique(as.list(strsplit(schedule_str, ",")[[1]]))
     }
 }
 
@@ -151,7 +183,7 @@ if (employment_str == 'NA') {
     if (!grepl("^(full|part|project|volunteer|probation)(,(full|part|project|volunteer|probation))*$", employment_str)) {
         stop(paste("Недопустимое значение параметра типа занятости:", employment_str, sep=" "))        
     } else {
-        employment_list <- as.list(strsplit(employment_str, ",")[[1]]) 
+        employment_list <- unique(as.list(strsplit(employment_str, ",")[[1]]))
     }
 }
 
@@ -163,7 +195,7 @@ if (areaids_str == 'NA') {
     if (!grepl("^\\d+(,\\d+)*$", areaids_str)) {
         stop(paste("Недопустимое значение параметра индентификаторов регионов:", areaids_str, sep=" "));
     } else {
-        areaids_list <- as.list(strsplit(areaids_str, ",")[[1]])    
+        areaids_list <- unique(as.list(strsplit(areaids_str, ",")[[1]]))
     }
 }
 
@@ -175,7 +207,7 @@ if (areanames_str == 'NA') {
     if (!grepl("^[ .А-Яа-я0-9()-]+(,[ .А-Яа-я0-9()-]+)*$", areanames_str)) {
         stop(paste("Недопустимое значение параметра названий регионов:", areanames_str, sep=" "));
     } else {
-        areanames_list <- as.list(strsplit(areanames_str, ",")[[1]])    
+        areanames_list <- unique(as.list(strsplit(areanames_str, ",")[[1]]))
     }
 }
 
@@ -197,10 +229,11 @@ if (specialization_str == 'NA') {
     specialization_list <- NA
 } else {
     if (!grepl("^\\d+(\\.\\d+)?(,\\d+(\\.\\d+)?)*$", specialization_str)) {
-        # TODO Логирование ошибки ?
-        stop(paste("Недопустимое значение параметра специализации:", specialization_str, sep=" "));
+        err <- paste("Недопустимое значение параметра специализации:", specialization_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
-        specialization_list <- as.list(strsplit(specialization_str, ",")[[1]])    
+        specialization_list <- unique(as.list(strsplit(specialization_str, ",")[[1]]))
     }   
 }
 
@@ -210,9 +243,11 @@ if (industry_str == 'NA') {
     industry_list <- NA
 } else {
     if (!grepl("^\\d+(\\.\\d+)?(,\\d+(\\.\\d+)?)*$", industry_str)) {
-        stop(paste("Недопустимое значение параметра индустрии компании:", industry_str, sep=" "));
+        err <- paste("Недопустимое значение параметра индустрии компании:", industry_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
-        industry_list <- as.list(strsplit(industry_str, ",")[[1]])    
+        industry_list <- unique(as.list(strsplit(industry_str, ",")[[1]]))
     }   
 }
 
@@ -228,6 +263,19 @@ if (is.na(jitter)) {
     jitter <- FALSE
 }
 
+# Гросс или Нетто
+gross <- as.logical('${gross}')
+if (is.na(gross)) {
+    gross <- FALSE
+}
+
+# Получать вакансии только с указанием зарплаты
+onlywithsalary <- as.logical('${onlywithsalary}')
+if (is.na(onlywithsalary)) {
+    onlywithsalary <- TRUE
+}
+
+
 # Параметры границ
 limitmin_str <- '${limitmin}'
 if (limitmin_str == "NA") {
@@ -235,7 +283,9 @@ if (limitmin_str == "NA") {
 } else {
     limitmin <- as.numeric(limitmin_str)
     if (is.na(limitmin)) {
-        stop(paste("Недопустимое значение параметра нижней границы:", limitmin_str, sep=" "))
+        err <- paste("Недопустимое значение параметра нижней границы:", limitmin_str, sep=" ")
+        log(err)
+        stop(err)
     }
 }
 limitmax_str <- '${limitmax}'
@@ -244,7 +294,9 @@ if (limitmax_str == "NA") {
 } else {
     limitmax <- as.numeric(limitmax_str)
     if (is.na(limitmax)) {
-        stop(paste("Недопустимое значение параметра верхней границы:", limitmax_str, sep=" "))
+        err <- paste("Недопустимое значение параметра верхней границы:", limitmax_str, sep=" ")
+        log(err)
+        stop(err)
     }
 }
 
@@ -255,12 +307,16 @@ maintitle <- trimws('${title}')
 plotwidth_str <- '${plotwidth}'
 plotwidth <- as.numeric(plotwidth_str)
 if (is.na(plotwidth)) {
-    stop(paste("Недопустимое значение параметра ширины диаграммы:", plotwidth_str, sep=" "))
+    err <- paste("Недопустимое значение параметра ширины диаграммы:", plotwidth_str, sep=" ")
+    log(err)
+    stop(err)
 }
 plotheight_str <- '${plotheight}'
 plotheight <- as.numeric(plotheight_str)
 if (is.na(plotheight)) {
-    stop(paste("Недопустимое значение параметра высоты диаграммы:", plotheight_str, sep=" "))
+    err <- paste("Недопустимое значение параметра высоты диаграммы:", plotwidth_str, sep=" ")
+    log(err)
+    stop(err)
 }
 
 # Должна ли ширина ящиков зависеть от количества вакансий в соответствующей группе
@@ -275,9 +331,11 @@ if (hlines_str == 'NA') {
     hlines <- integer()
 } else {
     if (!grepl("^\\d+(,\\d+)*$", hlines_str)) {
-        stop(paste("Недопустимое значение параметра отметок:", hlines_str, sep=" "));
+        err <- paste("Недопустимое значение параметра отметок:", hlines_str, sep=" ")
+        log(err)
+        stop(err)        
     } else {
-        hlines <- as.integer(strsplit(hlines_str, ",")[[1]])    
+        hlines <- unique(as.integer(strsplit(hlines_str, ",")[[1]]))
     }
 }
 
@@ -285,29 +343,24 @@ if (hlines_str == 'NA') {
 breaksby_str <- '${breaksby}'
 breaksby <- as.numeric(breaksby_str)
 if (is.na(breaksby)) {
-    stop(paste("Недопустимое значение параметра шага делений:", breaksby_str, sep=" "))
+    err <- paste("Недопустимое значение параметра шага делений:", breaksby_str, sep=" ")
+    log(err)
+    stop(err) 
 }
 
 vacancies <- NULL
 
+if (expcolour) {
+    experience <- c("noExperience", "between1And3", "between3And6", "moreThan6")
+} else {
+    experience <- c(NA)
+}
+
 { # XXX
 for (name in names(areas_list)) {
     for (search in search_list) {
-        if (expcolour) {
-            experience <- c("noExperience", "between1And3", "between3And6", "moreThan6")    
-            for (exp in experience) {
-                result <- getVacancies(exp, search, areas_list[[name]]) 
-                if (!is.null(result)) {
-                    result$area.search_name <- factor(name)
-                    if (is.null(vacancies)) {
-                        vacancies <- result
-                    } else {
-                        vacancies <- rbind(vacancies, result)
-                    }
-                }
-            }
-        } else {
-            result <- getVacancies(NULL, search, areas_list[[name]]) 
+        for (exp in experience) {
+            result <- getVacancies(exp, search, areas_list[[name]]) 
             if (!is.null(result)) {
                 result$area.search_name <- factor(name)
                 if (is.null(vacancies)) {
@@ -321,18 +374,28 @@ for (name in names(areas_list)) {
 }
 } # XXX
 
-if (length(vacancies) == 0) {
-    # TODO Логировать количество вакансий
-    stop("Отсутствуют элементы для отображения")
+amt <- nrow(vacancies)
+if (is.null(amt)) {
+    msg <- "Отсутствуют элементы для отображения"
+    log(msg)
+    stop(msg)
+} else {
+    log(paste("Получено вакансий:", amt, sep=" "))
 }
 
 vacancies$salary <- with(vacancies, ifelse(is.na(vacancies$salary.to), vacancies$salary.from, vacancies$salary.to))
 
 # Удаляем оклады в иностранной валюте
-vacancies <- subset(vacancies, salary.currency == "RUR")
+vacancies <- subset(vacancies, is.na(salary.currency) | salary.currency == "RUR")
 
 # Учитываем НДФЛ
-vacancies$salary <- with(vacancies, ifelse(vacancies$salary.gross, vacancies$salary*0.87, vacancies$salary))
+if (gross) {
+    vacancies$salary <- with(vacancies, ifelse(vacancies$salary.gross, vacancies$salary, vacancies$salary/0.87))
+    ylab <- "Заработная плата (гросс)"
+} else {
+    vacancies$salary <- with(vacancies, ifelse(vacancies$salary.gross, vacancies$salary*0.87, vacancies$salary))
+    ylab <- "Заработная плата (нетто)"
+}
 
 # Отключаем Научную нотацию чисел на диаграммах
 options(scipen=999)
@@ -363,7 +426,7 @@ if (jitter) {
     plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = I("gray"), alpha = 0.8)
 }
 
-plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y="Заработная плата (нетто)", color="Опыт работы") +
+plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y=ylab, color="Опыт работы") +
     theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10), legend.text=element_text(size = 10),
         legend.title=element_text(size = 10, face="bold"), strip.text.x=element_text(size = 10, face="bold"))
     
@@ -376,8 +439,8 @@ plot <- plot + geom_hline(yintercept=hlines, color="gray", linetype=5) +
             scale_y_continuous(breaks=sort(c(seq(0,max(vacancies$salary, na.rm = TRUE),by=breaksby), hlines)))
 
 # TODO Закомментировать
-print(plot)
-dev.off()
+#print(plot)
+#dev.off()
 
 requestDir <- '/mnt/webapp-files/${resourceName}/${requestId}'
 dir.create(requestDir, recursive=TRUE)
@@ -387,5 +450,13 @@ CairoPNG(chartFile, width=plotwidth, height=plotheight)
 print(plot)
 dev.off()
 
-vacancies
+vacancies$salary <- with(vacancies, ifelse(is.na(vacancies$salary), NaN, vacancies$salary))
+
+if (expcolour) {
+    cols <- c('id','alternate_url','search','area.name','area.search_name','employer.name','name','experience','salary')
+} else {
+    cols <- c('id','alternate_url','search','area.name','area.search_name','employer.name','name','salary')
+}
+
+result <- vacancies[,cols]
 
