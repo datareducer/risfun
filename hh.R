@@ -8,9 +8,9 @@ library(R.cache)
 library(Cairo)
 
 Sys.setenv(TZ = "Europe/Moscow")
-resourceHostDir <- '/mnt/host/logs/${resourceName}'
-dir.create(resourceHostDir)
-logFile <- paste(resourceHostDir, paste('log_', Sys.Date(), '.txt', sep=''), sep='/')
+logDir <- '/mnt/host/logs/${resourceName}'
+dir.create(logDir)
+logFile <- paste(logDir, paste('log_', Sys.Date(), '.txt', sep=''), sep='/')
 
 # R.cache не позволяет явно задать время жизни кэша. Обходим это, создавая новый каталог для кэширования каждый день.
 # Таким образом, время жизни кэша будет равняться суткам.
@@ -146,7 +146,9 @@ log("Начало выполнения")
 # Строка поиска
 search_str <- trimws('${search}')
 if (search_str == 'NA') {
-    stop("Не установлено значение строки поиска")
+    err <- "Не установлено значение строки поиска"
+    log(err)
+    stop(err)
 }
 search_list <- unique(as.list(strsplit(search_str, ",")[[1]]))
 
@@ -157,7 +159,9 @@ if (searchfield_str == 'NA') {
     searchfield_list <- NA
 } else {
     if (!grepl("^(name|company_name|description)(,(name|company_name|description))*$", searchfield_str)) {
-        stop(paste("Недопустимое значение параметра области поиска:", searchfield_str, sep=" "))        
+        err <- paste("Недопустимое значение параметра области поиска:", searchfield_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
         searchfield_list <- unique(as.list(strsplit(searchfield_str, ",")[[1]]))
     }
@@ -169,7 +173,9 @@ if (schedule_str == 'NA') {
     schedule_list <- NA
 } else {
     if (!grepl("^(fullDay|shift|flexible|remote|flyInFlyOut)(,(fullDay|shift|flexible|remote|flyInFlyOut))*$", schedule_str)) {
-        stop(paste("Недопустимое значение параметра графика работы:", schedule_str, sep=" "))        
+        err <- paste("Недопустимое значение параметра графика работы:", schedule_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
         schedule_list <- unique(as.list(strsplit(schedule_str, ",")[[1]]))
     }
@@ -181,7 +187,9 @@ if (employment_str == 'NA') {
     employment_list <- NA
 } else {
     if (!grepl("^(full|part|project|volunteer|probation)(,(full|part|project|volunteer|probation))*$", employment_str)) {
-        stop(paste("Недопустимое значение параметра типа занятости:", employment_str, sep=" "))        
+        err <- paste("Недопустимое значение параметра типа занятости:", employment_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
         employment_list <- unique(as.list(strsplit(employment_str, ",")[[1]]))
     }
@@ -193,7 +201,9 @@ if (areaids_str == 'NA') {
     stop("Не установлено значение параметра идентификаторов регионов")
 } else {
     if (!grepl("^\\d+(,\\d+)*$", areaids_str)) {
-        stop(paste("Недопустимое значение параметра индентификаторов регионов:", areaids_str, sep=" "));
+        err <- paste("Недопустимое значение параметра индентификаторов регионов:", areaids_str, sep=" ")
+        log(err)
+        stop(err)
     } else {
         areaids_list <- unique(as.list(strsplit(areaids_str, ",")[[1]]))
     }
@@ -202,7 +212,9 @@ if (areaids_str == 'NA') {
 # Названия регионов
 areanames_str <- '${areanames}'
 if (areanames_str == 'NA') {
-    stop("Не установлено значение параметра названий регионов")
+    err <- "Не установлено значение параметра названий регионов"
+    log(err)
+    stop(err)
 } else {
     if (!grepl("^[ .А-Яа-я0-9()-]+(,[ .А-Яа-я0-9()-]+)*$", areanames_str)) {
         stop(paste("Недопустимое значение параметра названий регионов:", areanames_str, sep=" "));
@@ -275,7 +287,6 @@ if (is.na(onlywithsalary)) {
     onlywithsalary <- TRUE
 }
 
-
 # Параметры границ
 limitmin_str <- '${limitmin}'
 if (limitmin_str == "NA") {
@@ -323,6 +334,12 @@ if (is.na(plotheight)) {
 boxwidth <- as.logical('${boxwidth}')
 if (is.na(jitter)) {
     boxwidth <- FALSE
+}
+
+# Выводить среднее
+means <- as.logical('${means}')
+if (is.na(means)) {
+    means <- FALSE
 }
 
 # Горизонтальные линии (отметки)
@@ -375,7 +392,7 @@ for (name in names(areas_list)) {
 } # XXX
 
 amt <- nrow(vacancies)
-if (is.null(amt)) {
+if (is.null(amt) || class(vacancies$salary.currency) == "logical") {
     msg <- "Отсутствуют элементы для отображения"
     log(msg)
     stop(msg)
@@ -421,21 +438,27 @@ plot <- ggplot(vacancies, mapping=aes)
 if (jitter) {
     plot <- plot + geom_jitter() 
     # Отключаем изображение выбросов, чтобы они не дублировали точки вакансий
-    plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = NA, alpha = 0.8)
+    plot <- plot + geom_boxplot(varwidth=boxwidth, outlier.colour=NA, alpha=0.8)
 } else {
-    plot <- plot + geom_boxplot(varwidth = boxwidth, outlier.colour = I("gray"), alpha = 0.8)
+    plot <- plot + geom_boxplot(varwidth=boxwidth, outlier.colour=I("gray"), alpha=0.8)
 }
 
 plot <- plot + facet_grid(. ~ search) + labs(title=maintitle, x="", y=ylab, color="Опыт работы") +
-    theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10), legend.text=element_text(size = 10),
-        legend.title=element_text(size = 10, face="bold"), strip.text.x=element_text(size = 10, face="bold"))
-    
+    theme(axis.text.x=element_text(size=10), axis.text.y=element_text(size=10), legend.text=element_text(size=10),
+        legend.title=element_text(size=10, face="bold"), strip.text.x=element_text(size=10, face="bold"))
+
+# Выводим среднее арифметическое
+if (means) {
+    plot <- plot + stat_summary(fun.y=mean, geom="errorbar", aes(ymax=..y.., ymin=..y..), width=0.8, linetype=2)
+}
+
+# Границы диаграммы    
 if (limitmin || limitmax) {
     plot <- plot + coord_cartesian(ylim = c(limitmin, limitmax))    
 }
 
 # Выводим отметки и задаём шаг делений вертикальной оси
-plot <- plot + geom_hline(yintercept=hlines, color="gray", linetype=5) + 
+plot <- plot + geom_hline(yintercept=hlines, color="gray", linetype=3) + 
             scale_y_continuous(breaks=sort(c(seq(0,max(vacancies$salary, na.rm = TRUE),by=breaksby), hlines)))
 
 # TODO Закомментировать
