@@ -84,7 +84,6 @@ getVacancies <- function(exp, search, area.id) {
         }
         
         # Параметры, имеющие несколько значений для одних и тех же имён, надо установливать первыми
-        #TODO Может ли params_list быть пустым?
         url <- modify_url(url, query = params_list)
         
         url <- modify_url(url, query = list(page=p, per_page=100))
@@ -107,6 +106,7 @@ getVacancies <- function(exp, search, area.id) {
             break
         } else if (pages > 19) {
             # Ограничение API
+            log(paste("Количество страниц превышает ограничение API:", pages, sep=" "))
             pages <- 19
         }
         
@@ -198,7 +198,9 @@ if (employment_str == 'NA') {
 # Идентификаторы регионов
 areaids_str <- '${areaids}'
 if (areaids_str == 'NA') {
-    stop("Не установлено значение параметра идентификаторов регионов")
+    err <- "Не установлено значение параметра идентификаторов регионов"
+    log(err)
+    stop(err)
 } else {
     if (!grepl("^\\d+(,\\d+)*$", areaids_str)) {
         err <- paste("Недопустимое значение параметра индентификаторов регионов:", areaids_str, sep=" ")
@@ -224,7 +226,9 @@ if (areanames_str == 'NA') {
 }
 
 if (length(areaids_list) != length(areanames_list)) {
-    stop("Количество идентификаторов не соответствует количеству названий регионов")
+    err <- "Количество идентификаторов не соответствует количеству названий регионов"
+    log(err)
+    stop(err)
 }
 
 areas_list <- setNames(areaids_list, areanames_list)
@@ -402,8 +406,8 @@ if (is.null(amt) || class(vacancies$salary.currency) == "logical") {
 
 vacancies$salary <- with(vacancies, ifelse(is.na(vacancies$salary.to), vacancies$salary.from, vacancies$salary.to))
 
-# Удаляем оклады в иностранной валюте
-vacancies <- subset(vacancies, is.na(salary.currency) | salary.currency == "RUR")
+# Очищаем оклады в иностранной валюте
+vacancies$salary <- with(vacancies, ifelse(salary.currency != "RUR", NaN, vacancies$salary))
 
 # Учитываем НДФЛ
 if (gross) {
